@@ -5,11 +5,10 @@ package dispatcher
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
-	"os"
-	"strings"
 
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
@@ -30,6 +29,7 @@ import (
 
 var errSniffingTimeout = newError("timeout on sniffing")
 var restrictedIPs string
+
 type cachedReader struct {
 	sync.Mutex
 	reader *pipe.Reader
@@ -221,9 +221,9 @@ func (d *DefaultDispatcher) getLink(ctx context.Context, network net.Network, sn
 		Reader: uplinkReader,
 		Writer: downlinkWriter,
 	}
-	
+
 	// check and drop Restricted Connections
-	dropRestrictedConnections(ctx,outboundLink,inboundLink)
+	dropRestrictedConnections(ctx, outboundLink, inboundLink)
 	sessionInbound := session.InboundFromContext(ctx)
 	var user *protocol.MemoryUser
 	if sessionInbound != nil {
@@ -254,11 +254,11 @@ func (d *DefaultDispatcher) getLink(ctx context.Context, network net.Network, sn
 
 	return inboundLink, outboundLink
 }
-func getOsArgValue(s []string, flags... string) string {
+func getOsArgValue(s []string, flags ...string) string {
 	for i, v := range s {
 		for _, flagVal := range flags {
 			if v == flagVal {
-				return s[i + 1]
+				return s[i+1]
 			}
 		}
 	}
@@ -273,41 +273,41 @@ func contains(s []string, str string) bool {
 	}
 	return false
 }
-func initRestrictedIPs(){
+func initRestrictedIPs() {
 	intvalSecond := 10 * time.Second
 	ticker := time.NewTicker(intvalSecond)
 	quit := make(chan struct{})
-	restrictedIPsPath := getOsArgValue(os.Args,"-restrictedIPsPath","-rip")
+	restrictedIPsPath := getOsArgValue(os.Args, "-restrictedIPsPath", "-rip")
 	if restrictedIPsPath == "" {
 		return
 	}
 	go func() {
 		intvalSecond = 30 * time.Second
 		for {
-		select {
-			case <- ticker.C:
+			select {
+			case <-ticker.C:
 				restrictedIPsByte, err := os.ReadFile(restrictedIPsPath)
 				restrictedIPs = string(restrictedIPsByte)
-				newError("getting  restrictedIPs:", restrictedIPs,err).AtDebug().WriteToLog()
+				newError("getting  restrictedIPs:", restrictedIPs, err).AtDebug().WriteToLog()
 
-			case <- quit:
+			case <-quit:
 				ticker.Stop()
 				return
 			}
 		}
 	}()
 }
-func dropRestrictedConnections(ctx context.Context,outboundLink *transport.Link,inboundLink *transport.Link){
-	if restrictedIPs == ""{
+func dropRestrictedConnections(ctx context.Context, outboundLink *transport.Link, inboundLink *transport.Link) {
+	if restrictedIPs == "" {
 		return
 	}
 	// Drop Restricted Connections
 	sessionInbounds := session.InboundFromContext(ctx)
 	userIP := sessionInbounds.Source.Address.String()
-	IPs := ss.Split(string(restrictedIPs), ",")
+	IPs := strings.Split(string(restrictedIPs), ",")
 
-	if(contains(IPs,userIP)){
-		newError("IP Limited: ",userIP).AtDebug().WriteToLog(session.ExportIDToError(ctx))
+	if contains(IPs, userIP) {
+		newError("IP Limited: ", userIP).AtDebug().WriteToLog(session.ExportIDToError(ctx))
 		common.Close(outboundLink.Writer)
 		common.Close(inboundLink.Writer)
 		common.Interrupt(outboundLink.Reader)
